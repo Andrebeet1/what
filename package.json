@@ -1,23 +1,24 @@
 {
-    "name": "aviator-predictor-bot",
-    "version": "1.0.0",
-    "description": "Bot WhatsApp qui envoie des prédictions stylées pour Aviator.",
-    "main": "index.js",
-    "scripts": {
-        "start": "node index.js"
-    },
-    "keywords": [
-        "whatsapp",
-        "baileys",
-        "aviator",
-        "bot",
-        "prediction"
-    ],
-    "author": "Destin Ben",
-    "license": "MIT",
-    "dependencies": {
-        "@hapi/boom": "^10.0.1",
-        "@whiskeysockets/baileys": "^6.7.18",
-        "qrcode-terminal": "^0.12.0"
-    }
+  "name": "aviator-predictor-bot",
+  "version": "1.0.0",
+  "description": "Bot WhatsApp qui envoie des prédictions stylées pour Aviator.",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "keywords": [
+    "whatsapp",
+    "baileys",
+    "aviator",
+    "bot",
+    "prediction"
+  ],
+  "author": "Destin Ben",
+  "license": "MIT",
+  "dependencies": {
+    "@hapi/boom": "^10.0.1",
+    "@whiskeysockets/baileys": "^6.7.18",
+    "express": "^4.18.2",
+    "qrcode-terminal": "^0.12.0"
+  }
 }
