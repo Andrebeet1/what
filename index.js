@@ -1,14 +1,25 @@
 const { default: makeWASocket, DisconnectReason, useMultiFileAuthState } = require('@whiskeysockets/baileys');
 const { Boom } = require('@hapi/boom');
-const generateStyledMultiplier = require('./predictor');
 const qrcode = require('qrcode-terminal');
+const express = require('express');
+const generateStyledMultiplier = require('./predictor');
+
+const app = express();
+const PORT = process.env.PORT || 3000;
+
+// Route de "ping" pour hébergement gratuit (Render, Railway)
+app.get('/', (req, res) => {
+  res.send('✅ Bot WhatsApp en ligne.');
+});
+
+app.listen(PORT, () => {
+  console.log(`🌐 Serveur web lancé sur le port ${PORT}`);
+});
 
 async function startBot() {
   const { state, saveCreds } = await useMultiFileAuthState('./auth_info');
 
-  const sock = makeWASocket({
-    auth: state
-  });
+  const sock = makeWASocket({ auth: state });
 
   sock.ev.on('creds.update', saveCreds);
 
@@ -35,6 +46,7 @@ async function startBot() {
   });
 
   const lastMessageMap = new Map();
+  const cooldownMap = new Map();
 
   sock.ev.on('messages.upsert', async ({ messages, type }) => {
     if (type !== 'notify') return;
@@ -43,6 +55,7 @@ async function startBot() {
       if (!msg.message || msg.key.fromMe) continue;
 
       const from = msg.key.remoteJid;
+      if (isOnCooldown(from)) return;
 
       const selectedId = msg.message?.buttonsResponseMessage?.selectedButtonId;
       if (selectedId === 'predict_next') {
@@ -53,6 +66,14 @@ async function startBot() {
       await envoyerNouvellePrediction(sock, from, lastMessageMap);
     }
   });
+
+  function isOnCooldown(user) {
+    const now = Date.now();
+    const last = cooldownMap.get(user) || 0;
+    if (now - last < 10000) return true; // 10 sec
+    cooldownMap.set(user, now);
+    return false;
+  }
 }
 
 async function envoyerNouvellePrediction(sock, from, lastMessageMap) {
@@ -63,7 +84,6 @@ async function envoyerNouvellePrediction(sock, from, lastMessageMap) {
     return;
   }
 
-  // Supprime le message précédent si possible
   if (lastMessageMap.has(from)) {
     try {
       await sock.sendMessage(from, {
@@ -74,7 +94,6 @@ async function envoyerNouvellePrediction(sock, from, lastMessageMap) {
     }
   }
 
-  // Envoie avec bouton (format valide Baileys 6+)
   const sentMsg = await sock.sendMessage(from, {
     text: prediction.styled,
     footer: 'Cliquez sur le bouton ci-dessous pour une nouvelle prédiction',
@@ -94,6 +113,11 @@ async function envoyerNouvellePrediction(sock, from, lastMessageMap) {
     id: sentMsg.key.id,
     participant: sentMsg.key.participant
   });
+
+  console.log(`📩 Prédiction envoyée à ${from}`);
 }
 
-startBot();
+// Démarrage du bot
+startBot().catch(err => {
+  console.error('❗ Erreur au démarrage du bot :', err);
+});
