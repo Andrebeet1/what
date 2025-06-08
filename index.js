@@ -1,31 +1,47 @@
+const express = require('express');
+const qrcode = require('qrcode');
 const { default: makeWASocket, DisconnectReason, useMultiFileAuthState } = require('@whiskeysockets/baileys');
 const { Boom } = require('@hapi/boom');
-const qrcode = require('qrcode-terminal');
-const express = require('express');
 const generateStyledMultiplier = require('./predictor');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Route de "ping" pour hébergement gratuit (Render, Railway)
-app.get('/', (req, res) => {
-  res.send('✅ Bot WhatsApp en ligne.');
+let latestQR = null;
+
+// Interface Web pour afficher le QR
+app.get('/', async (req, res) => {
+  if (!latestQR) {
+    return res.send('<h2>✅ Bot WhatsApp en ligne.<br>QR non encore généré...</h2>');
+  }
+
+  try {
+    const qrImage = await qrcode.toDataURL(latestQR);
+    res.send(`
+      <h2>📱 Scanner ce QR Code avec WhatsApp</h2>
+      <img src="${qrImage}" />
+      <p>Code mis à jour automatiquement.</p>
+    `);
+  } catch (err) {
+    res.status(500).send('❌ Erreur lors du rendu du QR code');
+  }
 });
 
 app.listen(PORT, () => {
-  console.log(`🌐 Serveur web lancé sur le port ${PORT}`);
+  console.log(`🌐 Serveur web lancé sur http://localhost:${PORT}`);
 });
 
+// === Lancement du bot ===
 async function startBot() {
   const { state, saveCreds } = await useMultiFileAuthState('./auth_info');
-
   const sock = makeWASocket({ auth: state });
 
   sock.ev.on('creds.update', saveCreds);
 
-  sock.ev.on('connection.update', ({ connection, lastDisconnect, qr }) => {
+  sock.ev.on('connection.update', async ({ connection, lastDisconnect, qr }) => {
     if (qr) {
-      qrcode.generate(qr, { small: true });
+      latestQR = qr; // Stocker pour affichage navigateur
+      console.log('📲 QR Code généré');
     }
 
     if (connection === 'close') {
@@ -35,13 +51,14 @@ async function startBot() {
           : null) !== DisconnectReason.loggedOut;
 
       if (shouldReconnect) {
-        console.log('🔄 Reconnexion…');
+        console.log('🔄 Reconnexion...');
         startBot();
       } else {
         console.log('❌ Déconnecté définitivement.');
       }
     } else if (connection === 'open') {
       console.log('✅ Bot connecté à WhatsApp');
+      latestQR = null; // QR plus nécessaire
     }
   });
 
@@ -70,7 +87,7 @@ async function startBot() {
   function isOnCooldown(user) {
     const now = Date.now();
     const last = cooldownMap.get(user) || 0;
-    if (now - last < 10000) return true; // 10 sec
+    if (now - last < 10000) return true; // 10 sec cooldown
     cooldownMap.set(user, now);
     return false;
   }
@@ -90,7 +107,7 @@ async function envoyerNouvellePrediction(sock, from, lastMessageMap) {
         delete: lastMessageMap.get(from)
       });
     } catch (e) {
-      console.log('⚠️ Erreur suppression message précédent :', e.message);
+      console.log('⚠️ Erreur lors de la suppression :', e.message);
     }
   }
 
@@ -117,7 +134,6 @@ async function envoyerNouvellePrediction(sock, from, lastMessageMap) {
   console.log(`📩 Prédiction envoyée à ${from}`);
 }
 
-// Démarrage du bot
 startBot().catch(err => {
   console.error('❗ Erreur au démarrage du bot :', err);
 });
