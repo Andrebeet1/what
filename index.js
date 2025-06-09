@@ -1,5 +1,6 @@
 const express = require('express');
 const qrcode = require('qrcode');
+const P = require('pino');
 const { default: makeWASocket, DisconnectReason, useMultiFileAuthState } = require('@whiskeysockets/baileys');
 const { Boom } = require('@hapi/boom');
 const generateStyledMultiplier = require('./predictor');
@@ -9,7 +10,7 @@ const PORT = process.env.PORT || 3000;
 
 let latestQR = null;
 
-// Interface Web pour afficher le QR
+// === Interface Web pour afficher le QR ===
 app.get('/', async (req, res) => {
   if (!latestQR) {
     return res.send('<h2>✅ Bot WhatsApp en ligne.<br>QR non encore généré...</h2>');
@@ -33,32 +34,40 @@ app.listen(PORT, () => {
 
 // === Lancement du bot ===
 async function startBot() {
-  const { state, saveCreds } = await useMultiFileAuthState('./auth_info');
-  const sock = makeWASocket({ auth: state });
+  const { state, saveCreds } = await useMultiFileAuthState('auth');
+
+  const sock = makeWASocket({
+    auth: state,
+    printQRInTerminal: true,
+    logger: P({ level: 'silent' }) // silencieux pour Render
+  });
 
   sock.ev.on('creds.update', saveCreds);
 
   sock.ev.on('connection.update', async ({ connection, lastDisconnect, qr }) => {
     if (qr) {
-      latestQR = qr; // Stocker pour affichage navigateur
+      latestQR = qr;
       console.log('📲 QR Code généré');
     }
 
     if (connection === 'close') {
-      const shouldReconnect =
-        (lastDisconnect?.error instanceof Boom
-          ? lastDisconnect.error.output?.statusCode
-          : null) !== DisconnectReason.loggedOut;
+      const reason = lastDisconnect?.error instanceof Boom
+        ? lastDisconnect.error.output?.statusCode
+        : null;
+
+      const shouldReconnect = reason !== DisconnectReason.loggedOut;
 
       if (shouldReconnect) {
         console.log('🔄 Reconnexion...');
         startBot();
       } else {
-        console.log('❌ Déconnecté définitivement.');
+        console.log('❌ Déconnecté définitivement (logout). Supprimez le dossier auth pour recommencer.');
       }
-    } else if (connection === 'open') {
+    }
+
+    if (connection === 'open') {
       console.log('✅ Bot connecté à WhatsApp');
-      latestQR = null; // QR plus nécessaire
+      latestQR = null;
     }
   });
 
@@ -87,12 +96,13 @@ async function startBot() {
   function isOnCooldown(user) {
     const now = Date.now();
     const last = cooldownMap.get(user) || 0;
-    if (now - last < 10000) return true; // 10 sec cooldown
+    if (now - last < 10000) return true; // 10 secondes
     cooldownMap.set(user, now);
     return false;
   }
 }
 
+// === Prédiction & réponse ===
 async function envoyerNouvellePrediction(sock, from, lastMessageMap) {
   const prediction = generateStyledMultiplier();
 
@@ -134,6 +144,7 @@ async function envoyerNouvellePrediction(sock, from, lastMessageMap) {
   console.log(`📩 Prédiction envoyée à ${from}`);
 }
 
+// === Démarrage ===
 startBot().catch(err => {
   console.error('❗ Erreur au démarrage du bot :', err);
 });
