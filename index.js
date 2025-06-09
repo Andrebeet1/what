@@ -31,12 +31,13 @@ app.listen(PORT, () => {
 });
 
 async function startBot() {
-  const { state, saveCreds } = await useMultiFileAuthState('./auth');
+  // IMPORTANT : Sur Render, adapte ce chemin vers un volume persistant
+  const { state, saveCreds } = await useMultiFileAuthState('/home/render/auth');
 
   const sock = makeWASocket({
     auth: state,
-    printQRInTerminal: false,
-    logger: P({ level: 'silent' })
+    printQRInTerminal: false, // on affiche via qrcodeTerminal + interface web
+    logger: P({ level: 'silent' }),
   });
 
   sock.ev.on('creds.update', saveCreds);
@@ -44,7 +45,7 @@ async function startBot() {
   sock.ev.on('connection.update', ({ connection, lastDisconnect, qr }) => {
     if (qr) {
       latestQR = qr;
-      // Affiche QR dans la console aussi
+      // Affiche aussi dans la console
       qrcodeTerminal.generate(qr, { small: true });
       console.log('📲 QR Code généré, scannez-le avec WhatsApp');
     }
@@ -67,8 +68,6 @@ async function startBot() {
       latestQR = null;
     }
   });
-
-  // Ton code gestion des messages ici (exemple basique)
 
   sock.ev.on('messages.upsert', async ({ messages, type }) => {
     if (type !== 'notify') return;
