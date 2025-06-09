@@ -1,14 +1,15 @@
 const { default: makeWASocket, DisconnectReason, useMultiFileAuthState } = require('@whiskeysockets/baileys');
 const { Boom } = require('@hapi/boom');
 const qrcode = require('qrcode-terminal');
-const generateStyledMultiplier = require('./predictor'); // ta fonction perso
+const generateStyledMultiplier = require('./predictor'); // Fonction de prédiction personnalisée
 
 async function startBot() {
   const { state, saveCreds } = await useMultiFileAuthState('./auth_info');
 
   const sock = makeWASocket({
     auth: state,
-    printQRInTerminal: false,
+    // Affichage QR dans le terminal (local uniquement)
+    printQRInTerminal: true,
   });
 
   sock.ev.on('creds.update', saveCreds);
@@ -19,11 +20,16 @@ async function startBot() {
       qrcode.generate(qr, { small: true });
     }
 
+    if (connection === 'open') {
+      console.log('✅ Bot connecté à WhatsApp');
+    }
+
     if (connection === 'close') {
-      const shouldReconnect =
-        (lastDisconnect?.error instanceof Boom
-          ? lastDisconnect.error.output?.statusCode
-          : null) !== DisconnectReason.loggedOut;
+      const statusCode = lastDisconnect?.error instanceof Boom
+        ? lastDisconnect.error.output?.statusCode
+        : null;
+
+      const shouldReconnect = statusCode !== DisconnectReason.loggedOut;
 
       if (shouldReconnect) {
         console.log('🔄 Reconnexion en cours...');
@@ -32,13 +38,9 @@ async function startBot() {
         console.log('❌ Déconnecté définitivement. Supprimez le dossier auth_info pour reconnecter.');
       }
     }
-
-    if (connection === 'open') {
-      console.log('✅ Bot connecté à WhatsApp');
-    }
   });
 
-  // Pour garder en mémoire le dernier message à supprimer avant d'envoyer le suivant
+  // Garde mémoire des derniers messages pour les supprimer avant de renvoyer
   const lastMessageMap = new Map();
 
   sock.ev.on('messages.upsert', async ({ messages, type }) => {
@@ -50,12 +52,12 @@ async function startBot() {
       const from = msg.key.remoteJid;
 
       const selectedId = msg.message?.buttonsResponseMessage?.selectedButtonId;
+
       if (selectedId === 'predict_next') {
         await envoyerNouvellePrediction(sock, from, lastMessageMap);
         continue;
       }
 
-      // Envoie une prédiction si message normal
       await envoyerNouvellePrediction(sock, from, lastMessageMap);
     }
   });
@@ -69,7 +71,7 @@ async function envoyerNouvellePrediction(sock, from, lastMessageMap) {
     return;
   }
 
-  // Supprime le message précédent si possible
+  // Supprime le message précédent
   if (lastMessageMap.has(from)) {
     try {
       await sock.sendMessage(from, {
@@ -80,7 +82,7 @@ async function envoyerNouvellePrediction(sock, from, lastMessageMap) {
     }
   }
 
-  // Envoie message avec bouton
+  // Envoie le nouveau message avec bouton
   const sentMsg = await sock.sendMessage(from, {
     text: prediction.styled,
     footer: 'Cliquez sur le bouton ci-dessous pour une nouvelle prédiction',
@@ -94,6 +96,7 @@ async function envoyerNouvellePrediction(sock, from, lastMessageMap) {
     headerType: 1
   });
 
+  // Sauvegarde pour suppression future
   lastMessageMap.set(from, {
     remoteJid: from,
     fromMe: true,
