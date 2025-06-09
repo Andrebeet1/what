@@ -1,0 +1,21 @@
+services:
+- type: web
+  name: what
+  runtime: node
+  repo: https://github.com/Andrebeet1/what
+  plan: free
+  envVars:
+  - key: PORT
+    sync: false
+  - key: WEBHOOK_URL
+    sync: false
+  region: oregon
+  buildCommand: npm install express qrcode qrcode-terminal pino @whiskeysockets/baileys @hapi/boom
+  startCommand: node index.js
+  autoDeployTrigger: commit
+  # Ajouter cette section volumes pour la persistance
+  volumes:
+  - name: auth-volume
+    mountPath: /home/render/auth
+    sizeGB: 1
+version: "1"
